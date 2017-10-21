@@ -1,0 +1,349 @@
+---
+title: "Wells_Fargo_Challenge"
+author: "Siddarth"
+date: "06 October 2017"
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    fig_caption: yes
+    fig_height: 4.5
+    fig_width: 7
+    highlight: tango
+    latex_engine: xelatex
+    number_sections: yes
+    toc: yes
+  html_document:
+    fig_caption: yes
+    fig_height: 4.5
+    fig_width: 7
+    highlight: tango
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+---
+#Introduction
+The following code is written for submission to Wells Fargo analytics challenge.The data given belongs to 4 major categories.  
+1. Month end balances of customers  
+2. Daily uses of WF credit card  
+3. Daily WF web traffic  
+4. Daily Interactions with WF    
+
+The objective is to analyze the data and come up with insights that might increase profitability, reduce expenses, improve customer services or help in target marketing of customers.The graphs are included within the report itself.
+
+##Read Data
+  The first step is to set the working directory and load the data.The data given can be saved as RData and loaded from the working directory to reduce the execution time.The commented code below shows how to convert the data into RData.  
+  Please uncomment and execute the code to load as RData after downloading the data set from [https://s3.amazonaws.com/mindsumo/public/Fake+Data+and+Metadata+-+Final+no+pass.xlsx] and changing the name of the file to "Dataset".  
+  After executing the commented code,please comment it again to avoid any errors.
+
+```{r,message=FALSE,warning=FALSE}
+rm(list=ls(all=T))
+
+#Set your working directory
+setwd("C:/Users/sid/Desktop/Wells_fargo")
+
+#install.packages("xlsx")
+#library(xlsx)
+#credit_card=read.xlsx(file = "Dataset.xlsx",sheetName = "credit_card")
+#web_traffic=read.xlsx(file = "Dataset.xlsx",sheetName = "web_traffic")
+#month_end_balances=read.xlsx(file ="Dataset.xlsx",sheetName = "sheet1" ) 
+#daily_interactions=read.xlsx(file ="Dataset.xlsx",sheetName = "interactions" )
+# save(credit_card,file = "credit_card.RData")
+# save(web_traffic,file = "web_data.RData")
+# save(month_end_balances,file = "balances.RData")
+# save(daily_interactions,file = "interactions.RData")
+
+load("balances.RData")
+load("interactions.RData")
+load("credit_card.RData")
+load("web_data.RData")
+```
+## Installing Packages  
+
+The install.packages command is commented in the code.Whenever required please uncomment the command and execute the line to install the libraries necessary.  
+
+##Data Exploration
+  
+ We start with exploring the data given to us. We check for information such as the number of unique customers whose data is given and if any of the data given to us has blank values.We then check and understand the attributes given to us based on the metadata and also the structure of the data. We convert the attributes to appropriate data types such as numeric,character or factor.The code for pre-processing and converting to appropriate data types is given below:
+
+```{r,message=FALSE,warning=FALSE}
+length(unique(month_end_balances$masked_id))
+length(unique(daily_interactions$masked_id))
+length(unique(credit_card$masked_id))
+length(unique(web_traffic$masked_id))
+str(month_end_balances)
+
+month_end_balances[month_end_balances==" "]=NA
+daily_interactions[daily_interactions==" "]=NA
+credit_card[credit_card==" "]=NA
+web_traffic[web_traffic==" "]=NA
+
+sum(is.na(month_end_balances))
+sum(is.na(daily_interactions))
+sum(is.na(credit_card))
+sum(is.na(web_traffic))
+
+num_atr1=c("age","tenure_altered","checking_acct_ct","savings_acct_ct",
+"check_bal_altered","sav_bal_altered","mortgage_bal_altered",
+"heloc_bal_altered","personal_loan_bal_altered",
+"atm_withdrawls_cnt","atm_deposits_cnt","branch_visit_cnt",
+"phone_banker_cnt","mobile_bank_cnt",
+"online_bank_cnt","direct_mail_cnt","direct_email_cnt","direct_phone_cnt","masked_id")
+
+
+categ_atr1=c("mortgage_flag","heloc_flag","personal_loan_flag","cc_flag","prot_acct_flag")
+
+month_end_balances[num_atr1]=data.frame(sapply(month_end_balances
+                                              [num_atr1], as.numeric))
+
+month_end_balances[categ_atr1]=data.frame(sapply(month_end_balances
+                                                 [categ_atr1], as.factor))
+
+web_traffic$wf_page=as.character(web_traffic$wf_page)
+
+```
+
+#Analyzing Web Traffic
+  
+  After understanding the structure of the data given to us, we first start with web trafic data.We have the list of web pages each customer visited.With this information we can figure out the purpose of the customer visit to the website.We assume that the final page the customer landed is the information the customer is looking for.
+    The intution for this approach is that if we are able to find the most frequent pages a particular customer visited and and match it to the customer information given such as age, it might reveal some insights. 
+
+```{r fig.align = 'default',message=FALSE, warning = FALSE, out.width="100%"}
+#install.packages(c("dplyr","tibble","tidyr","ggplot2"))
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(ggplot2)
+
+temp_data=web_traffic%>%as_data_frame()%>%
+  separate(wf_page,into=c("page_1","page_2","page_3"),sep="/")
+
+temp_data[temp_data==" " | temp_data==""]=NA
+```
+
+##Frequency of Visits  
+**Fig 1** shows the most frequent pages i.e., top 10 visited by all the customers.
+
+```{r fig.align = 'default',message=FALSE, warning = FALSE, out.width="100%",fig.cap="Frequency of visits Vs Landing Pages"}
+temp_data%>%mutate(landing_page=(ifelse(is.na(page_3),page_2,page_3)))%>%
+  select(masked_id,landing_page)%>%group_by(landing_page)%>%summarise(ct=n())%>%
+  top_n(10,wt=ct)%>%ggplot(aes(reorder(landing_page,-ct,FUN=median),ct))+
+  geom_col()+labs(y="No of visits",x="Landing pages")+coord_flip()
+
+```
+
+##Age Groups        
+  In order to get further insights into customer behaviour we try to categorize the customers into different age groups and find out the most frequent pages visited by the age group.  
+  For this purpose we combine customer data and web traffic data based on customer id assuming the age of the customer as the maximum of the age attribute for that customer.We then bin the customers into age groups as following:  
+   1. **"Old" if age>50**  
+   2. **"Middle age" if 50>age>=30**  
+   3. **"Young" if >30age>=14**    
+  After binning we find out the information that each age group is looking for based on the most frequent web page visits.    
+  **Fig 2** shows the number of times each group visited the website for information.
+
+```{r fig.align = 'default', warning = FALSE, out.width="100%",message=FALSE,,fig.cap="Age Groups vs Website visits"}
+
+#Calculating age of each customer.Assuming max age of the given groups 
+cust_ages=data.frame(masked_id=numeric(),age=numeric())
+
+for(i in unique(month_end_balances$masked_id)){
+  x=subset(month_end_balances,masked_id==i)
+  y=data.frame('masked_id'=i,'age'=max(x$age))
+  cust_ages=rbind(cust_ages,y)
+}
+rm(x,y)
+
+cust_ages=as_tibble(cust_ages)
+
+month_end_balances=as_tibble(month_end_balances)
+
+#Binning.Ages 50 and above as old.Ages 30 -<50 middle age 14-<30 young
+
+x=temp_data%>%mutate(landing_page=(ifelse(is.na(page_3),page_2,page_3)))%>%
+  select(masked_id,landing_page)%>%group_by(masked_id,landing_page)%>%
+  summarise(ct=n())%>%full_join(cust_ages)%>%
+  mutate(set=ifelse(age>50,"old",ifelse(age>30,"middle age","young")))%>%select(set,landing_page,ct)%>%
+  group_by(set,landing_page)%>%summarise(ct=sum(ct))%>%top_n(10,ct)
+
+temp_data%>%mutate(landing_page=(ifelse(is.na(page_3),page_2,page_3)))%>%
+  full_join(cust_ages)%>%mutate(set=ifelse(age>50,"old",ifelse(age>30,"middle age","young")))%>%group_by(set)%>%summarise(ct=n())%>%ggplot(aes(set,ct))+
+  geom_col(fill=c("#CC6666", "#9999CC", "#66CC99"))+labs(x="Age group",y="No of webpages")
+
+```
+
+##Frequency of pages visited by age group "Old"     
+  **Fig 3** shows the most frequent information the age group **Old** is looking for.
+  
+```{r fig.align = 'default', warning = FALSE, out.width="100%",message=FALSE,fig.cap="No of visits by group Old"}
+filter(x,set=="old")%>%ggplot(aes(reorder(landing_page,-ct,FUN=median),ct))+
+  geom_bar(stat="identity",fill="#9999CC")+
+  labs(y="No of visits by age group old",x="Landing pages")+coord_flip()
+
+```
+
+##Frequency of pages visited by age group "Middle age"   
+  **Fig 4** shows the most frequent information the age group **Middle age** is looking for.
+  
+```{r fig.align = 'default', warning = FALSE, out.width="100%",message=FALSE,fig.cap="No of visits by group Middle age"}
+filter(x,set=="middle age")%>%ggplot(aes(reorder(landing_page,-ct,FUN=median),ct))+
+  geom_bar(stat="identity",fill= "#CC6666")+
+  labs(y="No of visits by age group middle age",x="Landing pages")+coord_flip()
+
+```
+
+##Frequency of pages visited by age group "Young"   
+  **Fig 5** shows the most frequent information the age group **Young** is looking for.   
+```{r fig.align = 'default', warning = FALSE, out.width="100%",message=FALSE,fig.cap="No of visits by group Young"}
+filter(x,set=="young")%>%ggplot(aes(reorder(landing_page,-ct,FUN=median),ct))+
+  geom_bar(stat="identity",fill="#66CC99")+
+  labs(y="No of visits by age group young",x="Landing pages")+coord_flip()
+
+```
+
+##Conclusions & Recommendations
+From Fig *3,4,5* we can conclude the following:    
+  1. **Planning for Retirement** is the most common information customers are looking 
+    for.WF can plan more comprehensive product offering in the retirement space to        attract more customers.  
+    
+  2. **Investment** is the other most prominent category among the customers.The bank        should be proactive in offering the customers several investment options.The bank     should try to promote its investment offerings.  
+  
+  3. **Fraud Information Centre** is also most frequently searched information for all        the age groups.The bank should improve their security measures as more customers are looking for fraud information center.    
+
+##Notes   
+
+  More amount of customer data is needed to furthur develop the model.As the data is limited to only 50 customers, this model does not give complete confidence for investments into advertising or product development.However, more data can furthur validate our insights.
+
+# Analyzing Credit Card transactions
+
+  We have the credit card transaction information for 50 customers. The detailed description of each category and the amount spent in each transaction. We will now try to figure out insights such as the category which has the maximum number of transactions, category which has the highest amount spent per transaction.  
+   For our purpose we split the credit card descriptions 2 and 3 to obtain the final descriptions.Furthur, as we see that Description 2 doesn't give the required number of transactions to mark it as prominent we use Description 3.  
+   
+##Splitting given Descriptions      
+```{r,warning=FALSE,message=FALSE}
+cc_temp=credit_card
+cc_temp$Des1=as.character(cc_temp$Des1)
+cc_temp$Des2=as.character(cc_temp$Des2)
+cc_temp$Des3=as.character(cc_temp$Des3)
+
+x=cc_temp%>%as_data_frame()%>%separate(Des2,into=c("Des2_1","Des2_2"),sep="/")%>%
+  separate(Des3,into=c("Des3_1","Des3_2","Des3_3"),sep=",")%>%
+  mutate(fin_Des2=ifelse(is.na(Des2_2),Des2_1,Des2_2))%>%
+  mutate(fin_Des3=ifelse(is.na(Des3_3),ifelse(is.na(Des3_2),Des3_1,Des3_2),Des3_3))
+
+x%>%group_by(fin_Des3)%>%summarise(count=n())%>%arrange(desc(count))%>%
+  top_n(10,count)
+```
+
+##Frequency of Transactions
+
+```{r fig.align = 'default', warning = FALSE, message=FALSE, out.width="100%",fig.cap="% age of transactions Vs Category"}
+credit_card%>%as_data_frame()%>%summarise(total_no_transactions=n())
+
+x%>%group_by(fin_Des2)%>%summarise(count=n())%>%arrange(desc(count))%>%
+  mutate(percent=round(count*100/3468))%>%top_n(10,percent)%>%
+  ggplot(aes(reorder(fin_Des2,-percent,FUN=min),percent))+
+  geom_bar(stat="identity",fill=c(rep("limegreen",2),rep("lightslategray",10)))+
+  labs(x="Description",y="% age of transactions")+geom_text(aes(label=percent,hjust=0.8)) +
+    coord_flip()
+
+```
+  
+  **Fig 6** shows the category and the percentage of transactions in each category.We can observe that **Department stores** and **Entertainment** categories account for atleast **40%** of the transactions.
+
+##Amount spent per transaction
+ We can also calculate the top 10 categories where the customers spent most amount per transaction. This gives us the information about the categories that WF can target and increase the discount offers to simulate furthur demand. The assumption here is that WF becomes more profitable with increase in transactions. Here,**Education** is removed as it has the highest amount per transaction of *$4908*.
+
+```{r fig.align = 'default', warning = FALSE, message=FALSE, out.width="100%",fig.cap="Amount pertransaction Vs Category"}
+cc_amount=x%>%group_by(fin_Des2)%>%summarise(total_amount=sum(Payment))
+
+cc_numtransact=x%>%group_by(fin_Des2)%>%summarise(num_transact=n())
+
+z=inner_join(cc_numtransact,cc_amount,by="fin_Des2")%>%
+   mutate(amtpertransact=round(total_amount/num_transact))%>%
+  arrange(desc(amtpertransact))
+z
+#Removing Education as it is outlier with $4908
+colnames(z)[1]="Transaction"
+
+z%>%slice(2:15)%>%ggplot(aes(reorder(Transaction,-amtpertransact,FUN=min),
+amtpertransact))+geom_bar(stat="identity",fill=c(rep("limegreen",3),
+rep("lightslategray",11)))+labs(x="Transaction",y="Amount per Transaction")+coord_flip()+geom_text(aes(label=amtpertransact,hjust=1))+
+  theme(legend.position="none")
+
+```
+
+##Conclusions and Recommendations  
+From **Fig7** we can conclude the following  
+  1. **Department stores** and **Entertainment** categories account for atleast 40% of the transactions        
+  2. **Transportation** and **Wholesale** have the highest amount spent per transactions  
+  3. WF can try to increase the number of transactions in the categories where the        amount spent per transactions is higher.It can be achieved by increasing reward       points or credit card offers in respective categories.      
+  The assumption for recommendations is that the increase in number of transactions and the amount spent per transaction will lead to more profitablity for WF.
+
+#Analyzing Daily interactions  
+
+ Next we try to find insights from the daily interactions of customers with WF.The approach is to count the complaint categories and number of complaints in each category.We use description 3 to categorize the complaints.This model can be further granulated based on further discussions with the bank.We look for the most frequent descriptions in the customer complaints.
+
+```{r,message=FALSE,warning=FALSE}
+daily_interactions$Des1=as.character(daily_interactions$Des1)
+daily_interactions$Des2=as.character(daily_interactions$Des2)
+daily_interactions$Des3=as.character(daily_interactions$Des3)
+
+x=as_data_frame(daily_interactions)
+glimpse(x)
+nrow(x)
+
+x%>%group_by(Des1)%>%summarise(count=n())%>%arrange(desc(count))
+x%>%group_by(Des3)%>%summarise(count=n())%>%arrange(desc(count))
+x%>%group_by(Des2)%>%summarise(count=n())%>%arrange(desc(count))
+
+y=x%>%select(Des3)
+```
+
+## Stop Word Removal   
+
+The stop words in the interactions such as and,of,or,at needs to be removed inorder to analyze the interactions.We use the stop words present in **tidytext** library.
+
+```{r,message=FALSE,warning=FALSE}
+#install.packages(c("tidytext","stringr"))
+library(tidytext)
+data("stop_words")
+my_stopwords=data_frame(word = c(as.character(1:100),"to","of","at","or"))
+```
+
+##Tokenization & Stemming 
+
+We also tokenize the sentence into single bag of words.We also stem the words inorder to reduce the computational complexity. More complicated tokenization can be performed with additional computational power.
+
+```{r,message=FALSE,warning=FALSE}
+library(stringr)
+
+#Tokenizing 
+t1=y%>%unnest_tokens(word,Des3)
+
+t1=t1%>%anti_join(stop_words,by="word")%>%anti_join(my_stopwords,by="word")%>% filter(str_detect(word,"[a-z]"))
+
+```
+
+
+```{r split=FALSE, fig.align = 'default', warning = FALSE, message=FALSE, out.width="100%",fig.cap="Most repeated words"}
+
+t1%>%group_by(word)%>%summarise(ct=n())%>%top_n(10)%>%
+  ggplot(aes(reorder(word,-ct,FUN=median),y=ct,fill=word))+
+  geom_bar(stat="identity")+
+  labs(x="word",y="count")+coord_flip()+theme(legend.position="none")
+
+```
+
+##Word Cloud  
+
+  **Fig 8** shows that the most common interactions are for **referral**,**service** and **partner** categories.We should further analyze the categories to provide efficient customer service and to reduce cost by reducing the number of interactions.Depicting the same complaint freqency as word cloud as it offers better intution.With further domain knowledge the model can be considerably improved to observe frequent complaints and provide better service.
+
+
+```{r split=FALSE, fig.align = 'default', warning = FALSE, message=FALSE, out.width="100%",fig.cap="Word Cloud of complaint categories"}
+#install.packages("wordcloud")
+library(wordcloud)
+t1 %>% count(word) %>%with(wordcloud(word,n, max.words = 50))
+
+```
+   
+ We only have the data of 50 customers. All the models built can be scaled and improved in terms of accuracy with more data and domain knowledge.
