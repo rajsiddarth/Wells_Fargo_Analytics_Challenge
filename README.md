@@ -1,6 +1,8 @@
 # Wells_Fargo_Challenge  
 
-The following code is written for submission to Wells Fargo analytics challenge.The data given belongs to 4 major categories.  
+For competition information please look at the link  https://www.mindsumo.com/contests/building-better.
+
+The code published is written for submission to Wells Fargo analytics challenge.The data given belongs to 4 major categories.  
 
  1. Month end balances of customers
 
