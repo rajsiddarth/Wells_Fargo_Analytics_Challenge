@@ -1,6 +1,6 @@
 # Wells Fargo Analytics Challenge  
 
-For competition information please look at the link  https://www.mindsumo.com/contests/building-better.
+For competition information please look at the link  https://www.mindsumo.com/contests/building-better. Download the report for detailed information on the analysis and recommendations along with plots.
 
 The code published is written for submission to Wells Fargo analytics challenge.The data given belongs to 4 major categories.  
 
