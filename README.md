@@ -1,4 +1,4 @@
-# Wells_Fargo_Challenge  
+# Wells Fargo Analytics Challenge  
 
 For competition information please look at the link  https://www.mindsumo.com/contests/building-better.
 
